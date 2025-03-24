@@ -1,2 +1,3 @@
 v 1.0 - GUI set up. AI implemntation,. speech recognition implemntation.
 V 1.1 - GUI alteration. 2 windows open on startup: App and File explorer. AI now detects folder_name, drive_name and BACKTRACK-function.
+V 1.2 - Added ability to run .exe files, still buggy from the logic side.

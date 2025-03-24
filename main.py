@@ -135,22 +135,23 @@ class VoiceNavigatorGUI(QWidget):
         self.handle_file_navigation(structured_command)
 
     def process_command_with_openai(self, command):
-        """
-        Uses OpenAI's Chat API to parse the voice command into a structured command.
-        The prompt instructs the AI to output one of:
-          - OPEN_DRIVE <drive_letter>
-          - OPEN_FOLDER <folder_name>
-          - BACKTRACK
-          - INVALID
-        """
+
         prompt_instructions = (
-            "You are a helpful assistant that converts human file navigation commands into a structured command. "
-            "For a given command, output exactly one of the following responses:\n"
-            "1. OPEN_DRIVE <drive_letter>    (for commands like 'open drive D')\n"
-            "2. OPEN_FOLDER <folder_name>    (for commands like 'open folder named Downloads')\n"
-            "3. BACKTRACK                    (for commands like 'backtrack' or 'go up one level')\n"
-            "4. INVALID                      (if the command cannot be parsed)\n"
-            "Do not include any extra text."
+        "You are an AI that converts human file navigation commands into structured commands. "
+        "For a given input, return only ONE of the following structured commands:\n\n"
+        "1. OPEN_DRIVE <drive_letter>    (e.g., 'Open D drive' → OPEN_DRIVE D)\n"
+        "2. OPEN_FOLDER <folder_name>    (e.g., 'Go to Documents' → OPEN_FOLDER Documents)\n"
+        "3. RUN_EXECUTABLE <filename>    (e.g., 'Run app dot exe → RUN_EXECUTABLE app.exe)\n"
+        "4. OPEN_PATH <full_path>        (e.g., 'Open C:/Users/Admin/Desktop' → OPEN_PATH C:/Users/Admin/Desktop)\n"
+        "5. SEARCH_FILE <filename>       (e.g., 'Find my resume' → SEARCH_FILE resume)\n"
+        "6. BACKTRACK                    (e.g., 'Go back one step' → BACKTRACK)\n"
+        "7. INVALID                      (if the command cannot be understood)\n"
+        
+        "Note: if a user says underscore in the sentence they mean → _\n"
+        "Note: if a user says dot in the sentence they mean → .\n"
+        "Note: if the user says a folder name or executables name that contains 2 words, make sure if the executable has space between them or not before running\n"
+
+        "IMPORTANT: Always return only the structured command. Do not add any explanations."
         )
 
         # Call the ChatCompletion API with a system message and the user's command.
@@ -161,13 +162,33 @@ class VoiceNavigatorGUI(QWidget):
                     {"role": "system", "content": prompt_instructions},
                     {"role": "user", "content": command}
                 ],
-                max_tokens=1000
+                max_tokens=50
             )
             structured_response = response['choices'][0]['message']['content'].strip()
             return structured_response
         except Exception as e:
             print("OpenAI API error:", e)
             return "INVALID"
+        
+    def execute_command(command):
+        """
+        Processes the structured command and executes actions accordingly.
+        """
+        if command.startswith("RUN_EXECUTABLE"):
+            _, exe_name = command.split(" ", 1)
+            if not exe_name.endswith(".exe"):
+                exe_name += ".exe"  # Append .exe if not specified
+
+            exe_path = os.path.join(os.getcwd(), exe_name)
+
+            if os.path.isfile(exe_path):
+                try:
+                    subprocess.Popen(exe_path, shell=True)
+                    print(f"Launching {exe_name}...")
+                except Exception as e:
+                    print(f"Error launching {exe_name}: {e}")
+            else:
+                print(f"Executable {exe_name} not found.")
 
     def handle_file_navigation(self, structured_command):
         """
