@@ -90,7 +90,7 @@ class VoiceNavigatorGUI(QWidget):
         # --- Right side: Recognized Speech Screen Display (RSSD) ---
         self.rssd_label = QLabel("Your command will be displayed here...", self)
         self.rssd_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.rssd_label.setFixedSize(400, 400)  # 4:4 ratio
+        self.rssd_label.setFixedSize(400, 100)  # 4:1 ratio
 
         # --- Main Layout ---
         main_layout = QHBoxLayout()
@@ -179,16 +179,27 @@ class VoiceNavigatorGUI(QWidget):
             if not exe_name.endswith(".exe"):
                 exe_name += ".exe"  # Append .exe if not specified
 
-            exe_path = os.path.join(os.getcwd(), exe_name)
+            # Search in the current folder instead of os.getcwd()
+            exe_path = os.path.join(current_folder, exe_name)
 
             if os.path.isfile(exe_path):
                 try:
                     subprocess.Popen(exe_path, shell=True)
-                    print(f"Launching {exe_name}...")
+                    print(f"Launching {exe_name} from {current_folder}...")
                 except Exception as e:
                     print(f"Error launching {exe_name}: {e}")
             else:
-                print(f"Executable {exe_name} not found.")
+                # Check case-insensitive match
+                files_in_folder = os.listdir(current_folder)
+                matching_files = [f for f in files_in_folder if f.lower() == exe_name.lower()]
+
+                if matching_files:
+                    exe_path = os.path.join(current_folder, matching_files[0])
+                    subprocess.Popen(exe_path, shell=True)
+                    print(f"Launching {matching_files[0]} from {current_folder}...")
+                else:
+                    print(f"Executable {exe_name} not found in {current_folder}.")
+
 
     def handle_file_navigation(self, structured_command):
         """
