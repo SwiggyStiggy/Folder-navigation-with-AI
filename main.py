@@ -60,15 +60,6 @@ class VoiceNavigatorGUI(QWidget):
         self.speech_thread = None
 
     def init_ui(self):
-        pass
-
-    def open_this_pc(self):
-        try:
-            subprocess.run(["explorer.exe", "/e,", ""])
-        except FileNotFoundError as e:
-            print(f"Error opening 'This PC': {e}")
-
-    def init_ui(self):
         self.setWindowTitle("AI File Navigator")
         self.setGeometry(100, 100, 800, 800)  # Overall window: 800x800 pixels
 
@@ -90,7 +81,7 @@ class VoiceNavigatorGUI(QWidget):
         # --- Right side: Recognized Speech Screen Display (RSSD) ---
         self.rssd_label = QLabel("Your command will be displayed here...", self)
         self.rssd_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.rssd_label.setFixedSize(400, 100)  # 4:1 ratio
+        self.rssd_label.setFixedSize(400, 400)  # 4:4 ratio
 
         # --- Main Layout ---
         main_layout = QHBoxLayout()
@@ -98,7 +89,13 @@ class VoiceNavigatorGUI(QWidget):
         main_layout.addWidget(self.rssd_label)
         self.setLayout(main_layout)
 
-        self.listening = False  # Application state
+        self.listening = False
+
+    def open_this_pc(self):
+        try:
+            subprocess.run(["explorer.exe", "/e,", ""])
+        except FileNotFoundError as e:
+            print(f"Error opening 'This PC': {e}")
 
     def toggle_listening(self):
         if self.listening:
@@ -125,36 +122,35 @@ class VoiceNavigatorGUI(QWidget):
             self.speech_thread.wait()
 
     def handle_recognized_command(self, command):
-        # Display the recognized command in the RSSD
         self.rssd_label.setText(command)
         self.state_label.setText("Processing...")
-        # Process the command with OpenAI to get a structured response
         structured_command = self.process_command_with_openai(command)
         print("Structured command:", structured_command)
-        # Use the structured command to navigate the file explorer
-        self.handle_file_navigation(structured_command)
+        if structured_command.startswith("RUN_EXECUTABLE"):
+            self.execute_command(structured_command)
+        else:
+
+            self.handle_file_navigation(structured_command)
 
     def process_command_with_openai(self, command):
-
         prompt_instructions = (
-        "You are an AI that converts human file navigation commands into structured commands. "
-        "For a given input, return only ONE of the following structured commands:\n\n"
-        "1. OPEN_DRIVE <drive_letter>    (e.g., 'Open D drive' → OPEN_DRIVE D)\n"
-        "2. OPEN_FOLDER <folder_name>    (e.g., 'Go to Documents' → OPEN_FOLDER Documents)\n"
-        "3. RUN_EXECUTABLE <filename>    (e.g., 'Run app dot exe → RUN_EXECUTABLE app.exe)\n"
-        "4. OPEN_PATH <full_path>        (e.g., 'Open C:/Users/Admin/Desktop' → OPEN_PATH C:/Users/Admin/Desktop)\n"
-        "5. SEARCH_FILE <filename>       (e.g., 'Find my resume' → SEARCH_FILE resume)\n"
-        "6. BACKTRACK                    (e.g., 'Go back one step' → BACKTRACK)\n"
-        "7. INVALID                      (if the command cannot be understood)\n"
-        
-        "Note: if a user says underscore in the sentence they mean → _\n"
-        "Note: if a user says dot in the sentence they mean → .\n"
-        "Note: if the user says a folder name or executables name that contains 2 words, make sure if the executable has space between them or not before running\n"
-
-        "IMPORTANT: Always return only the structured command. Do not add any explanations."
+            "You are an AI that converts human file navigation commands into structured commands. "
+            "For a given input, return only ONE of the following structured commands:\n\n"
+            "1. OPEN_DRIVE <drive_letter>    (e.g., 'Open D drive' → OPEN_DRIVE D)\n"
+            "2. OPEN_FOLDER <folder_name>    (e.g., 'Go to Documents' → OPEN_FOLDER Documents)\n"
+            "3. RUN_EXECUTABLE <filename>    (e.g., 'Run app dot exe' → RUN_EXECUTABLE app.exe)\n"
+            "4. OPEN_PATH <full_path>        (e.g., 'Open C:/Users/Admin/Desktop' → OPEN_PATH C:/Users/Admin/Desktop)\n"
+            "5. SEARCH_FILE <filename>       (e.g., 'Find my resume' → SEARCH_FILE resume)\n"
+            "6. BACKTRACK                    (e.g., 'Go back one step' → BACKTRACK)\n"
+            "7. INVALID                      (if the command cannot be understood)\n"
+            "\n"
+            "Note: if a user says underscore in the sentence they mean → _\n"
+            "Note: if a user says dot in the sentence they mean → .\n"
+            "Note: if the user says a folder name or executables name that contains 2 words, make sure if the executable has space between them or not before running\n"
+            "\n"
+            "IMPORTANT: Always return only the structured command. Do not add any explanations."
         )
 
-        # Call the ChatCompletion API with a system message and the user's command.
         try:
             response = openai.ChatCompletion.create(
                 model="gpt-3.5-turbo",
@@ -169,37 +165,35 @@ class VoiceNavigatorGUI(QWidget):
         except Exception as e:
             print("OpenAI API error:", e)
             return "INVALID"
-        
-    def execute_command(command):
+
+    def execute_command(self, command):
         """
         Processes the structured command and executes actions accordingly.
         """
         if command.startswith("RUN_EXECUTABLE"):
             _, exe_name = command.split(" ", 1)
             if not exe_name.endswith(".exe"):
-                exe_name += ".exe"  # Append .exe if not specified
+                exe_name += ".exe" 
 
-            # Search in the current folder instead of os.getcwd()
-            exe_path = os.path.join(current_folder, exe_name)
+            folder_path = self.current_path if self.current_path else os.getcwd()
+            exe_path = os.path.join(folder_path, exe_name)
 
             if os.path.isfile(exe_path):
                 try:
                     subprocess.Popen(exe_path, shell=True)
-                    print(f"Launching {exe_name} from {current_folder}...")
+                    print(f"Launching {exe_name} from {folder_path}...")
                 except Exception as e:
                     print(f"Error launching {exe_name}: {e}")
             else:
-                # Check case-insensitive match
-                files_in_folder = os.listdir(current_folder)
+                files_in_folder = os.listdir(folder_path)
                 matching_files = [f for f in files_in_folder if f.lower() == exe_name.lower()]
 
                 if matching_files:
-                    exe_path = os.path.join(current_folder, matching_files[0])
+                    exe_path = os.path.join(folder_path, matching_files[0])
                     subprocess.Popen(exe_path, shell=True)
-                    print(f"Launching {matching_files[0]} from {current_folder}...")
+                    print(f"Launching {matching_files[0]} from {folder_path}...")
                 else:
-                    print(f"Executable {exe_name} not found in {current_folder}.")
-
+                    print(f"Executable {exe_name} not found in {folder_path}.")
 
     def handle_file_navigation(self, structured_command):
         """
@@ -209,8 +203,7 @@ class VoiceNavigatorGUI(QWidget):
             parts = structured_command.split()
             if len(parts) >= 2:
                 drive_letter = parts[1]
-                # Ensure drive letter ends with colon and backslash
-                path = drive_letter if drive_letter.endswith(":\\") else drive_letter + ":\\"
+                path = drive_letter if drive_letter.endswith(":\\") else drive_letter + ":\\" 
                 self.current_path = path
                 self.open_path(path)
                 self.state_label.setText("Location found!")
@@ -222,7 +215,6 @@ class VoiceNavigatorGUI(QWidget):
             if len(parts) == 2:
                 folder_name = parts[1]
                 if self.current_path is None:
-                    # If no drive/folder is currently open, show an error.
                     self.state_label.setText("No drive selected. Please open a drive first.")
                 else:
                     path = os.path.join(self.current_path, folder_name)
@@ -237,11 +229,11 @@ class VoiceNavigatorGUI(QWidget):
 
         elif structured_command == "BACKTRACK":
             if self.current_path is None:
-                # Already at "This PC"
+
                 self.state_label.setText("Already at 'This PC' view.")
             else:
                 parent = os.path.dirname(self.current_path.rstrip("\\"))
-                # If parent becomes empty or the same, go to "This PC"
+
                 if not parent or parent == self.current_path:
                     self.current_path = None
                     self.open_this_pc()
