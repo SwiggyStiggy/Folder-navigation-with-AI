@@ -3,12 +3,18 @@ import os
 import openai
 import dotenv
 import subprocess
+import win32com.client
 import speech_recognition as sr
 from PyQt6.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 
 dotenv.load_dotenv()
 openai.api_key = os.getenv('OPENAI_API_KEY')
+
+try:
+    import win32com.client
+except ImportError:
+    print("Please install pywin32 package: pip install pywin32")
 
 # -----------------------------
 # Speech Recognition Thread
@@ -24,7 +30,6 @@ class SpeechRecognizerThread(QThread):
 
     def run(self):
         with self.microphone as source:
-            # Adjust for ambient noise
             self.recognizer.adjust_for_ambient_noise(source)
             while self._running:
                 try:
@@ -34,7 +39,6 @@ class SpeechRecognizerThread(QThread):
                     print(f"Command recognized: {command}")
                     self.command_recognized.emit(command)
                 except sr.WaitTimeoutError:
-                    # No speech within the timeout, continue listening
                     continue
                 except sr.UnknownValueError:
                     print("Could not understand audio")
@@ -52,7 +56,6 @@ class VoiceNavigatorGUI(QWidget):
         super().__init__()
         self.init_ui()
 
-        # Initialize the second window (file explorer) once on startup
         if not hasattr(self, 'pc_opened'):
             self.open_this_pc()
             self.pc_opened = True
@@ -129,7 +132,6 @@ class VoiceNavigatorGUI(QWidget):
         if structured_command.startswith("RUN_EXECUTABLE"):
             self.execute_command(structured_command)
         else:
-
             self.handle_file_navigation(structured_command)
 
     def process_command_with_openai(self, command):
@@ -146,7 +148,7 @@ class VoiceNavigatorGUI(QWidget):
             "\n"
             "Note: if a user says underscore in the sentence they mean → _\n"
             "Note: if a user says dot in the sentence they mean → .\n"
-            "Note: if the user says a folder name or executables name that contains 2 words, make sure if the executable has space between them or not before running\n"
+            "Note: if the user says a folder name or executable name that contains 2 words, make sure if the executable has space between them or not before running\n"
             "\n"
             "IMPORTANT: Always return only the structured command. Do not add any explanations."
         )
@@ -167,17 +169,12 @@ class VoiceNavigatorGUI(QWidget):
             return "INVALID"
 
     def execute_command(self, command):
-        """
-        Processes the structured command and executes actions accordingly.
-        """
         if command.startswith("RUN_EXECUTABLE"):
             _, exe_name = command.split(" ", 1)
             if not exe_name.endswith(".exe"):
-                exe_name += ".exe" 
-
+                exe_name += ".exe"
             folder_path = self.current_path if self.current_path else os.getcwd()
             exe_path = os.path.join(folder_path, exe_name)
-
             if os.path.isfile(exe_path):
                 try:
                     subprocess.Popen(exe_path, shell=True)
@@ -187,7 +184,6 @@ class VoiceNavigatorGUI(QWidget):
             else:
                 files_in_folder = os.listdir(folder_path)
                 matching_files = [f for f in files_in_folder if f.lower() == exe_name.lower()]
-
                 if matching_files:
                     exe_path = os.path.join(folder_path, matching_files[0])
                     subprocess.Popen(exe_path, shell=True)
@@ -196,20 +192,16 @@ class VoiceNavigatorGUI(QWidget):
                     print(f"Executable {exe_name} not found in {folder_path}.")
 
     def handle_file_navigation(self, structured_command):
-        """
-        Parses the structured command and updates the file explorer accordingly.
-        """
         if structured_command.startswith("OPEN_DRIVE"):
             parts = structured_command.split()
             if len(parts) >= 2:
                 drive_letter = parts[1]
-                path = drive_letter if drive_letter.endswith(":\\") else drive_letter + ":\\" 
+                path = drive_letter if drive_letter.endswith(":\\") else drive_letter + ":\\"
                 self.current_path = path
                 self.open_path(path)
                 self.state_label.setText("Location found!")
             else:
                 self.state_label.setText("Invalid drive command.")
-
         elif structured_command.startswith("OPEN_FOLDER"):
             parts = structured_command.split(maxsplit=1)
             if len(parts) == 2:
@@ -226,14 +218,11 @@ class VoiceNavigatorGUI(QWidget):
                         self.state_label.setText("Location not found!")
             else:
                 self.state_label.setText("Invalid folder command.")
-
         elif structured_command == "BACKTRACK":
             if self.current_path is None:
-
                 self.state_label.setText("Already at 'This PC' view.")
             else:
                 parent = os.path.dirname(self.current_path.rstrip("\\"))
-
                 if not parent or parent == self.current_path:
                     self.current_path = None
                     self.open_this_pc()
@@ -242,22 +231,31 @@ class VoiceNavigatorGUI(QWidget):
                     self.current_path = parent
                     self.open_path(parent)
                     self.state_label.setText("Location found!")
+        elif structured_command.startswith("OPEN_PATH"):
+            self.current_path = structured_command.split(" ", 1)[1]
+            self.open_path(self.current_path)
         else:
             self.state_label.setText("Command not understood.")
 
+
     def open_path(self, path):
-        """
-        Opens the given path in the default file explorer.
-        """
         try:
-            os.startfile(path)
+            shell = win32com.client.Dispatch("Shell.Application")
+            windows = shell.Windows()
+            found = False
+            for window in windows:
+                if window.LocationName != "" and window.Name.lower() in ["file explorer", "explorer"]:
+                    window.Navigate(path)
+                    found = True
+                    print(f"Navigating existing explorer window to: {path}")
+                    break
+            if not found:
+                subprocess.Popen(["explorer", path])
+                print(f"Opening new explorer window to: {path}")
         except Exception as e:
             print("Error opening path:", e)
             self.state_label.setText("Error opening location.")
 
-# -----------------------------
-# Main entry point
-# -----------------------------
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = VoiceNavigatorGUI()
