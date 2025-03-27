@@ -28,6 +28,8 @@ class SpeechRecognizerThread(QThread):
         self.recognizer = sr.Recognizer()
         self.microphone = sr.Microphone()
 
+        self.recognizer.energy_threshold = 300
+
     def run(self):
         with self.microphone as source:
             self.recognizer.adjust_for_ambient_noise(source)
@@ -148,7 +150,7 @@ class VoiceNavigatorGUI(QWidget):
             "\n"
             "Note: if a user says underscore in the sentence they mean → _\n"
             "Note: if a user says dot in the sentence they mean → .\n"
-            "Note: if the user says a folder name or executable name that contains 2 words, make sure if the executable has space between them or not before running\n"
+            "Note: If a user provides a folder name that contains spaces, KEEP THE SPACES INTACT. Do not replace spaces with underscores. Only return the folder name as the user said it."
             "\n"
             "IMPORTANT: Always return only the structured command. Do not add any explanations."
         )
