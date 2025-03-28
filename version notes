@@ -4,3 +4,4 @@ V 1.2 - Added ability to run .exe files, still buggy from the logic side.
 V 1.3 - running .EXE files(bugfix). Missing the voice command execution, it was only displayed in RSSD but not passed/interpreted into a structured command. 
 V 1.4 - Change the folder url itself so it moves in the same window and doesnt open a new one
 V 1.5 - AI had issues with ' ' (space) recognition. Prompt was changed for this. There were issues with speech_recognition as well. Was low energy threshold.
+V 1.6 - Ability to open any type of files (e.g: .pdf, .docx, .py, .txt, .mp3/4 etc.)

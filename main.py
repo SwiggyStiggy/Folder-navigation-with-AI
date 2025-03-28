@@ -133,6 +133,13 @@ class VoiceNavigatorGUI(QWidget):
         print("Structured command:", structured_command)
         if structured_command.startswith("RUN_EXECUTABLE"):
             self.execute_command(structured_command)
+        elif structured_command.startswith("OPEN_FILE"):  # NEW: Handle OPEN_FILE command
+            parts = structured_command.split(maxsplit=1)
+            if len(parts) == 2:
+                filename = parts[1]
+                self.open_file(filename)
+            else:
+                self.state_label.setText("Invalid file command.")
         else:
             self.handle_file_navigation(structured_command)
 
@@ -147,11 +154,11 @@ class VoiceNavigatorGUI(QWidget):
             "5. SEARCH_FILE <filename>       (e.g., 'Find my resume' → SEARCH_FILE resume)\n"
             "6. BACKTRACK                    (e.g., 'Go back one step' → BACKTRACK)\n"
             "7. INVALID                      (if the command cannot be understood)\n"
+            "8. OPEN_FILE <filename>         (e.g., 'Open report dot pdf' → OPEN_FILE report.pdf)\n"  # NEW: Added option for opening any file type\n"
             "\n"
             "Note: if a user says underscore in the sentence they mean → _\n"
             "Note: if a user says dot in the sentence they mean → .\n"
-            "Note: If a user provides a folder name that contains spaces, KEEP THE SPACES INTACT. Do not replace spaces with underscores. Only return the folder name as the user said it."
-            "\n"
+            "Note: If a user provides a folder name that contains spaces, KEEP THE SPACES INTACT. Do not replace spaces with underscores. Only return the folder name as the user said it.\n"
             "IMPORTANT: Always return only the structured command. Do not add any explanations."
         )
 
@@ -224,22 +231,46 @@ class VoiceNavigatorGUI(QWidget):
             if self.current_path is None:
                 self.state_label.setText("Already at 'This PC' view.")
             else:
-                parent = os.path.dirname(self.current_path.rstrip("\\"))
-                if not parent or parent == self.current_path:
-                    self.current_path = None
-                    self.open_this_pc()
+                parent = os.path.dirname(self.current_path.rstrip("\\"))                              
+                if not parent or parent == self.current_path:                   
+                    self.current_path = None                 
+                    self.open_this_pc()                  
                     self.state_label.setText("Returned to 'This PC'.")
-                else:
+                else:\
                     self.current_path = parent
-                    self.open_path(parent)
-                    self.state_label.setText("Location found!")
+                self.open_path(parent)        
+                self.state_label.setText("Location found!")
         elif structured_command.startswith("OPEN_PATH"):
             self.current_path = structured_command.split(" ", 1)[1]
             self.open_path(self.current_path)
         else:
             self.state_label.setText("Command not understood.")
-
-
+            
+    # NEW: Added method to open any file with its default application
+    def open_file(self, filename):
+        if not self.current_path:
+            self.state_label.setText("No directory selected. Please navigate to a folder first.")
+            return
+        
+        file_path = os.path.join(self.current_path, filename)
+        
+        if not os.path.exists(file_path):
+            self.state_label.setText(f"Error: '{filename}' not found in {self.current_path}")
+            return
+        
+        try:
+            if os.name == 'nt':
+                os.startfile(file_path)  # Windows
+            elif os.uname().sysname == 'Darwin':
+                subprocess.call(['open', file_path])  # macOS
+            else:
+                subprocess.call(['xdg-open', file_path])  # Linux
+            print(f"Opened: {filename}")
+            self.state_label.setText(f"Opened {filename} successfully!")
+        except Exception as e:
+            print(f"Error opening file: {e}")
+            self.state_label.setText("Failed to open file.")
+            
     def open_path(self, path):
         try:
             shell = win32com.client.Dispatch("Shell.Application")
