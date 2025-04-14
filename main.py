@@ -7,6 +7,7 @@ import win32com.client
 import speech_recognition as sr
 from PyQt6.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from docx import Document
 
 dotenv.load_dotenv()
 openai.api_key = os.getenv('OPENAI_API_KEY')
@@ -133,7 +134,7 @@ class VoiceNavigatorGUI(QWidget):
         print("Structured command:", structured_command)
         if structured_command.startswith("RUN_EXECUTABLE"):
             self.execute_command(structured_command)
-        elif structured_command.startswith("OPEN_FILE"):  # NEW: Handle OPEN_FILE command
+        elif structured_command.startswith("OPEN_FILE"):
             parts = structured_command.split(maxsplit=1)
             if len(parts) == 2:
                 filename = parts[1]
@@ -149,12 +150,12 @@ class VoiceNavigatorGUI(QWidget):
             "For a given input, return only ONE of the following structured commands:\n\n"
             "1. OPEN_DRIVE <drive_letter>    (e.g., 'Open D drive' → OPEN_DRIVE D)\n"
             "2. OPEN_FOLDER <folder_name>    (e.g., 'Go to Documents' → OPEN_FOLDER Documents)\n"
-            "3. RUN_EXECUTABLE <filename>    (e.g., 'Run app dot exe' → RUN_EXECUTABLE app.exe)\n"
+            "3. RUN_EXECUTABLE <filename>    (e.g., 'Run document' or 'Run app dot exe' → RUN_EXECUTABLE document)\n"
             "4. OPEN_PATH <full_path>        (e.g., 'Open C:/Users/Admin/Desktop' → OPEN_PATH C:/Users/Admin/Desktop)\n"
             "5. SEARCH_FILE <filename>       (e.g., 'Find my resume' → SEARCH_FILE resume)\n"
             "6. BACKTRACK                    (e.g., 'Go back one step' → BACKTRACK)\n"
             "7. INVALID                      (if the command cannot be understood)\n"
-            "8. OPEN_FILE <filename>         (e.g., 'Open report dot pdf' → OPEN_FILE report.pdf)\n"  # NEW: Added option for opening any file type\n"
+            "8. OPEN_FILE <filename>         (e.g., 'Open report dot pdf' → OPEN_FILE report.pdf)\n"
             "\n"
             "Note: if a user says underscore in the sentence they mean → _\n"
             "Note: if a user says dot in the sentence they mean → .\n"
@@ -179,26 +180,35 @@ class VoiceNavigatorGUI(QWidget):
 
     def execute_command(self, command):
         if command.startswith("RUN_EXECUTABLE"):
-            _, exe_name = command.split(" ", 1)
-            if not exe_name.endswith(".exe"):
-                exe_name += ".exe"
+            _, file_name = command.split(" ", 1)
             folder_path = self.current_path if self.current_path else os.getcwd()
-            exe_path = os.path.join(folder_path, exe_name)
-            if os.path.isfile(exe_path):
-                try:
-                    subprocess.Popen(exe_path, shell=True)
-                    print(f"Launching {exe_name} from {folder_path}...")
-                except Exception as e:
-                    print(f"Error launching {exe_name}: {e}")
-            else:
-                files_in_folder = os.listdir(folder_path)
-                matching_files = [f for f in files_in_folder if f.lower() == exe_name.lower()]
+
+            # Extract extension (if any)
+            file_base, file_ext = os.path.splitext(file_name)
+
+            if not file_ext:
+                # No extension, try to find a matching file
+                matching_files = [f for f in os.listdir(folder_path) if f.startswith(file_base + ".")]
                 if matching_files:
-                    exe_path = os.path.join(folder_path, matching_files[0])
-                    subprocess.Popen(exe_path, shell=True)
-                    print(f"Launching {matching_files[0]} from {folder_path}...")
+                    file_name = matching_files[0]
                 else:
-                    print(f"Executable {exe_name} not found in {folder_path}.")
+                    print(f"No file found starting with {file_base} in {folder_path}.")
+                    return
+
+            file_path = os.path.join(folder_path, file_name)
+
+            if os.path.isfile(file_path):
+                try:
+                    # If it's an .exe, use subprocess
+                    if file_path.lower().endswith(".exe"):
+                        subprocess.Popen(file_path, shell=True)
+                    else:
+                        os.startfile(file_path)  # Windows only: opens with default app
+                    print(f"Opening {file_name} from {folder_path}...")
+                except Exception as e:
+                    print(f"Error opening {file_name}: {e}")
+            else:
+                print(f"File {file_name} not found in {folder_path}.")
 
     def handle_file_navigation(self, structured_command):
         if structured_command.startswith("OPEN_DRIVE"):
@@ -248,6 +258,8 @@ class VoiceNavigatorGUI(QWidget):
             
     # NEW: Added method to open any file with its default application
     def open_file(self, filename):
+        folder_path = self.current_path if self.current_path else os.getcwd()
+        file_path = os.path.join(folder_path, filename)
         if not self.current_path:
             self.state_label.setText("No directory selected. Please navigate to a folder first.")
             return
@@ -260,16 +272,36 @@ class VoiceNavigatorGUI(QWidget):
         
         try:
             if os.name == 'nt':
-                os.startfile(file_path)  # Windows
+                os.startfile(file_path)
             elif os.uname().sysname == 'Darwin':
-                subprocess.call(['open', file_path])  # macOS
+                subprocess.call(['open', file_path])  # macOS(not yet)
             else:
-                subprocess.call(['xdg-open', file_path])  # Linux
+                subprocess.call(['xdg-open', file_path])  # Linux(not yet)
             print(f"Opened: {filename}")
             self.state_label.setText(f"Opened {filename} successfully!")
         except Exception as e:
             print(f"Error opening file: {e}")
             self.state_label.setText("Failed to open file.")
+
+        if os.path.isfile(file_path):
+            try:
+                if filename.lower().endswith('.docx'):
+                    # Use win32com to open with Microsoft Word
+                    word = win32com.client.Dispatch("Word.Application")
+                    word.Visible = True
+                    word.Documents.Open(file_path)
+                    print(f"Opened DOCX file: {file_path}")
+                else:
+                    # Default open using associated program
+                    os.startfile(file_path)
+                    print(f"Opened file: {file_path}")
+                self.state_label.setText(f"Opened {filename}")
+            except Exception as e:
+                print(f"Error opening file: {e}")
+                self.state_label.setText("Error opening file.")
+        else:
+            print(f"File not found: {file_path}")
+            self.state_label.setText("File not found.")
             
     def open_path(self, path):
         try:

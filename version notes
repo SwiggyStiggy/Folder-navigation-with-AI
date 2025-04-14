@@ -5,3 +5,4 @@ V 1.3 - running .EXE files(bugfix). Missing the voice command execution, it was 
 V 1.4 - Change the folder url itself so it moves in the same window and doesnt open a new one
 V 1.5 - AI had issues with ' ' (space) recognition. Prompt was changed for this. There were issues with speech_recognition as well. Was low energy threshold.
 V 1.6 - Ability to open any type of files (e.g: .pdf, .docx, .py, .txt, .mp3/4 etc.)
+V 1.7 - Previous version fix.
